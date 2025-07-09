@@ -1,3 +1,4 @@
+
 #!/bin/bash
 
 # Exit immediately if a command exits with a non-zero status.
@@ -17,7 +18,18 @@ if [ -z "$TOKEN" ] || [ "$TOKEN" == "anonymous" ]; then
   echo "Error: Could not determine your SSH key fingerprint. Please ensure your public key is correctly configured."
   exit 1
 fi
-log_message "SSH_ORIGINAL_COMMAND: '$SSH_ORIGINAL_COMMAND' for token: '$TOKEN'"
+
+# Determine the requested protocol type from the SSH username
+# e.g., ssh https@tunnel.net -> PROTOCOL_TYPE=https
+# Default to tcp if no specific protocol is given (e.g., ssh tunneluser@tunnel.net)
+PROTOCOL_TYPE="tcp"
+SSH_USER="$(echo "$SSH_ORIGINAL_COMMAND" | cut -d' ' -f1 | cut -d'@' -f1)"
+if [[ "$SSH_USER" == "https" ]]; then
+    PROTOCOL_TYPE="https"
+elif [[ "$SSH_USER" == "http" ]]; then
+    PROTOCOL_TYPE="http"
+fi
+log_message "SSH_ORIGINAL_COMMAND: '$SSH_ORIGINAL_COMMAND' for token: '$TOKEN', protocol: '$PROTOCOL_TYPE'"
 
 # The command provided by the user (e.g., create, alias:my-app, activate:public_port)
 COMMAND="$SSH_ORIGINAL_COMMAND"
@@ -36,8 +48,8 @@ fi
 
 case "$COMMAND" in
     "create")
-        log_message "Attempting to create new tunnel for token: '$TOKEN'"
-        DATA=$(/opt/tunnel/bin/alias-manager create "$TOKEN")
+        log_message "Attempting to create new tunnel for token: '$TOKEN' with protocol: '$PROTOCOL_TYPE'"
+        DATA=$(/opt/tunnel/bin/alias-manager create "$TOKEN:$PROTOCOL_TYPE")
         if [ -z "$DATA" ]; then
             log_message "ERROR: alias-manager failed to create tunnel for token: '$TOKEN'"
             echo "Error: Failed to create tunnel. Please try again or contact support."
@@ -64,8 +76,8 @@ case "$COMMAND" in
 
     alias:*) # Create a tunnel with a specific alias.
         REQUESTED_ALIAS="${COMMAND#alias:}"
-        log_message "Attempting to create tunnel with alias '$REQUESTED_ALIAS' for token: '$TOKEN'"
-        DATA=$(/opt/tunnel/bin/alias-manager create "$TOKEN:$REQUESTED_ALIAS")
+        log_message "Attempting to create tunnel with alias '$REQUESTED_ALIAS' for token: '$TOKEN' with protocol: '$PROTOCOL_TYPE'"
+        DATA=$(/opt/tunnel/bin/alias-manager create "$TOKEN:$PROTOCOL_TYPE:$REQUESTED_ALIAS")
         if [ -z "$DATA" ]; then
             log_message "ERROR: alias-manager failed to create tunnel with alias '$REQUESTED_ALIAS' for token: '$TOKEN'"
             echo "Error: Failed to create tunnel with alias '$REQUESTED_ALIAS'. It might be reserved or unavailable. Please try another alias or contact support."

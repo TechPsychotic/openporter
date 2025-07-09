@@ -5,7 +5,7 @@
 **OpenPorter is a self-hosted, secure, and extensible reverse tunnel gateway that allows you to expose local TCP services to the internet with a single SSH command. No client-client software is needed.**
 
 ---
->```see this was made by gemini cli and wanted to see how that pans out. people do let met know how do you feel about this (as a project as well as how gemini pans out). also I am new to tunneling and all and hence would appreciate your comments as well as guidance on this```
+>```see this was made by gemini cli and wanted to see how that pans out. people do let met know how do you feel about this (as a project as well as how gemini pans out). also I am new to tunneling and all and hence would appreciate your comments as well as   guidance on this```
 
 ## Table of Contents
 
@@ -31,11 +31,17 @@ OpenPorter uses a secure, two-step process to establish tunnels. This is necessa
 
 1.  **Request a Tunnel Configuration**: The user makes an initial SSH request to the server, asking for a new tunnel configuration. The `alias-manager` generates a unique public port and alias, saves it to the database (initially inactive), and sends the connection command back to the user.
     ```bash
-    # Request a randomly-named tunnel
+    # Request a randomly-named TCP tunnel (default)
     ssh tunneluser@tunnel.net create
     
-    # Or request a specific alias
+    # Request a randomly-named HTTPS tunnel
+    ssh https@tunnel.net create
+
+    # Request a specific alias for a TCP tunnel
     ssh tunneluser@tunnel.net alias:my-cool-app
+
+    # Request a specific alias for an HTTPS tunnel
+    ssh https@tunnel.net alias:my-secure-app
     ```
 
 2.  **Receive Connection Details**: The server responds with the details and the command to activate the tunnel.
@@ -54,11 +60,14 @@ OpenPorter uses a secure, two-step process to establish tunnels. This is necessa
 
 3.  **Activate the Tunnel**: The user runs the provided `ssh -R` command. The `tunnel-handler` intercepts this, calls `alias-manager` to mark the tunnel as active, and the `tcp-mux` service begins proxying traffic from the public port to the user's local port. The SSH session must remain open to maintain the tunnel.
 
+    **Important Note on `ssh -R` syntax:** The `ssh -R` command (e.g., `ssh -R 32001:localhost:25565 tunneluser@tunnel.net`) is used *only* for activating the tunnel with the details provided by the server. You **cannot** specify a custom public alias or public port directly within the `ssh -R` command in the first step, as the `ForceCommand` mechanism does not parse these arguments. The system assigns the public port, and you request aliases in the first step.
+
 ## Key Features
 
 -   **Zero-Client**: Works with any standard SSH client. No agent installation required.
 -   **Secure by Default**: Built on SSH public key authentication and user isolation.
 -   **Full TCP Support**: Tunnels any TCP-based service (HTTP, SSH, RDP, databases, etc.).
+-   **Protocol-Aware Tunneling**: Supports `tcp` (default) and `https` tunnel types, with future extensibility.
 -   **Self-Hosted**: You control your data, your domain, and your security.
 -   **Lightweight**: Written in Go and Bash, with minimal resource consumption, perfect for Oracle's free tier.
 -   **Persistent & Dynamic**: Tunnel configurations are stored in a SQLite database.
@@ -121,13 +130,42 @@ OpenPorter uses a secure, two-step process to establish tunnels. This is necessa
 
 ## Usage Guide
 
--   **Expose a Local Web Server on Port 3000**:
+-   **Admin Access**:
+    ```bash
+    ssh admin@tunnel.net
+    # You will be prompted for the admin user's password.
+    ```
+
+-   **Requesting a Tunnel (First Step)**:
+    -   **Default TCP Tunnel (random alias)**:
+        ```bash
+        ssh tunneluser@tunnel.net create
+        ```
+    -   **HTTPS Tunnel (random alias)**:
+        ```bash
+        ssh https@tunnel.net create
+        ```
+    -   **TCP Tunnel with specific alias**:
+        ```bash
+        ssh tunneluser@tunnel.net alias:my-web-app
+        ```
+    -   **HTTPS Tunnel with specific alias**:
+        ```bash
+        ssh https@tunnel.net alias:my-secure-app
+        ```
+
+-   **Activating a Tunnel (Second Step)**:
+    -   After requesting a tunnel, the server will provide a command like:
+        `ssh -R 32001:localhost:25565 tunneluser@tunnel.net`
+    -   Run this command to establish and activate the tunnel. Keep this SSH session open.
+
+-   **Example: Expose a Local Web Server on Port 3000**:
     1.  `ssh tunneluser@tunnel.net create`
     2.  You will receive a command like: `ssh -R 34567:localhost:3000 tunneluser@tunnel.net`
     3.  Run the command to activate the tunnel.
     4.  Access your web server at `random-alias.tunnel.net:34567`.
 
--   **SSH into a Home Machine (Port 22)**:
+-   **Example: SSH into a Home Machine (Port 22)**:
     1.  `ssh tunneluser@tunnel.net create`
     2.  You will receive a command like: `ssh -R 38022:localhost:22 tunneluser@tunnel.net`
     3.  Run the command to activate the tunnel.
@@ -153,7 +191,7 @@ OpenPorter uses a secure, two-step process to establish tunnels. This is necessa
 ## Security Overview
 
 -   **User Isolation**: The `tunneluser` has no shell access due to `ForceCommand` and `nologin`.
--   **Authentication**: All access is through SSH public key authentication.
+-   **Authentication**: All access is through SSH public key authentication for `tunneluser`.
 -   **Restricted Commands**: The `tunnel-handler` script carefully validates and sanitizes all user input.
 -   **Rate Limiting**: Prevents rapid, successive tunnel creation attempts from a single user.
 -   **User-Specific Tunnel Limits**: Configurable limits on the number of active tunnels per user to prevent resource exhaustion.

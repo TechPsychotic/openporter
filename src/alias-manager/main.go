@@ -1,3 +1,4 @@
+
 package main
 
 import (
@@ -22,7 +23,7 @@ func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 
 	if len(os.Args) < 3 {
-		log.Println("Usage: alias-manager <get|create|activate|get-by-alias> <token|token:alias|token:public_port>")
+		log.Println("Usage: alias-manager <get|create|activate|get-by-alias> <token|token:protocol|token:protocol:alias|token:public_port>")
 		os.Exit(1)
 	}
 
@@ -49,9 +50,14 @@ func main() {
 	case "create":
 		parts := strings.Split(arg, ":")
 		token := parts[0]
+		protocolType := "tcp" // Default protocol
 		requestedAlias := ""
-		if len(parts) == 2 {
-			requestedAlias = parts[1]
+
+		if len(parts) >= 2 {
+			protocolType = parts[1]
+		}
+		if len(parts) == 3 {
+			requestedAlias = parts[2]
 		}
 
 		if !canCreateTunnel(db, token) {
@@ -74,15 +80,15 @@ func main() {
 		publicPort := port // For now, public port is same as local port
 
 		_, err := db.Exec(`INSERT INTO tunnels 
-						(token, alias, port, public_port, active, created_at, last_active) 
-						VALUES (?, ?, ?, ?, 0, DATETIME('now'), DATETIME('now'))`,
-			token, alias, port, publicPort)
+						(token, alias, port, public_port, type, active, created_at, last_active) 
+						VALUES (?, ?, ?, ?, ?, 0, DATETIME('now'), DATETIME('now'))`,
+			token, alias, port, publicPort, protocolType)
 		if err != nil {
 			log.Printf("Error creating tunnel for token %s: %v", token, err)
 			os.Exit(1)
 		}
 		fmt.Printf("%s:%d:%d", alias, port, publicPort)
-		log.Printf("Tunnel created for token %s: %s:%d:%d", token, alias, port, publicPort)
+		log.Printf("Tunnel created for token %s: %s:%d:%d (Type: %s)", token, alias, port, publicPort, protocolType)
 
 	case "activate":
 		parts := strings.Split(arg, ":")

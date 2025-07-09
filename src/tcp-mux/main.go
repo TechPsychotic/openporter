@@ -1,3 +1,4 @@
+
 package main
 
 import (
@@ -6,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -29,21 +31,22 @@ func main() {
 	activeListeners := make(map[int]net.Listener)
 
 	for {
-		rows, err := db.Query("SELECT public_port, port FROM tunnels WHERE active = 1")
+		rows, err := db.Query("SELECT public_port, port, type FROM tunnels WHERE active = 1")
 		if err != nil {
 			log.Printf("DB Error fetching active tunnels: %v", err)
 			time.Sleep(10 * time.Second)
 			continue
 		}
 
-		currentTunnels := make(map[int]int) // public_port -> local_port
+		currentTunnels := make(map[int]struct{}) // public_port -> exists
 		for rows.Next() {
 			var publicPort, localPort int
-			if err := rows.Scan(&publicPort, &localPort); err != nil {
+			var tunnelType string // Read the type, though not used for basic TCP forwarding yet
+			if err := rows.Scan(&publicPort, &localPort, &tunnelType); err != nil {
 				log.Printf("DB Scan Error: %v", err)
 				continue
 			}
-			currentTunnels[publicPort] = localPort
+			currentTunnels[publicPort] = struct{}{} // Mark as active
 
 			// Start proxy if not already active
 			if _, exists := activeListeners[publicPort]; !exists {
@@ -53,7 +56,7 @@ func main() {
 					continue
 				}
 				activeListeners[publicPort] = ln
-				log.Printf("Started listening on public port %d, forwarding to local port %d", publicPort, localPort)
+				log.Printf("Started listening on public port %d (Type: %s), forwarding to local port %d", publicPort, tunnelType, localPort)
 				go acceptConnections(ln, publicPort, localPort, db)
 			}
 		}
