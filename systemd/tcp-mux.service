@@ -1,0 +1,12 @@
+
+[Unit]
+Description=OpenPorter TCP Multiplexer
+After=network.target
+
+[Service]
+ExecStart=/opt/tunnel/bin/tcp-mux
+Restart=always
+User=tunneluser
+
+[Install]
+WantedBy=multi-user.target

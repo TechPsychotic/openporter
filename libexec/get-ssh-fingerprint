@@ -1,0 +1,54 @@
+#!/bin/bash
+
+# This script attempts to get the SSH key fingerprint of the connected user.
+# In a production environment, a more robust and secure method should be used,
+# potentially involving sshd passing the fingerprint directly or a more secure
+# way to identify the authorized key.
+
+LOG_FILE="/opt/tunnel/var/log/tunnel.log"
+exec 2>>"$LOG_FILE" # Redirect stderr to log file
+
+log_message() {
+  echo "$(date '+%Y-%m-%d %H:%M:%S') [get-ssh-fingerprint] $1" >> "$LOG_FILE"
+}
+
+# Try to get the public key from the authorized_keys file based on the client IP
+# This is a simplified approach and might not work in all scenarios.
+# A more robust solution would involve sshd passing the key or fingerprint directly.
+
+AUTHORIZED_KEYS_FILE="/home/tunneluser/.ssh/authorized_keys"
+
+if [ -f "$AUTHORIZED_KEYS_FILE" ]; then
+    # Attempt to find the key that matches the connecting client's IP
+    # This is a heuristic and might not be accurate if multiple keys are from the same IP
+    CLIENT_IP=$(echo $SSH_CLIENT | awk '{print $1}')
+    
+    # Find the line in authorized_keys that might correspond to the client
+    # This is a very basic attempt and might need refinement.
+    KEY_LINE=$(grep "$CLIENT_IP" "$AUTHORIZED_KEYS_FILE" | head -n 1)
+
+    if [ -z "$KEY_LINE" ]; then
+        # If no IP match, just take the first key (less secure, but for demonstration)
+        KEY_LINE=$(head -n 1 "$AUTHORIZED_KEYS_FILE")
+    fi
+
+    if [ -n "$KEY_LINE" ]; then
+        # Extract the key part (e.g., ssh-rsa AAAAB3N...) and get its fingerprint
+        FINGERPRINT=$(echo "$KEY_LINE" | ssh-keygen -lf - 2>/dev/null | awk '{print $2}')
+        if [ -n "$FINGERPRINT" ]; then
+            echo "$FINGERPRINT"
+            log_message "Successfully retrieved fingerprint: $FINGERPRINT"
+            exit 0
+        else
+            log_message "Failed to get fingerprint from key line: $KEY_LINE"
+        fi
+    else
+        log_message "No key line found in authorized_keys for client IP: $CLIENT_IP"
+    fi
+else
+    log_message "Authorized keys file not found: $AUTHORIZED_KEYS_FILE"
+fi
+
+# Fallback if no fingerprint could be determined
+log_message "Falling back to anonymous token."
+echo "anonymous"

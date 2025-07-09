@@ -1,0 +1,110 @@
+#!/bin/bash
+
+# Exit immediately if a command exits with a non-zero status.
+set -e
+
+LOG_FILE="/opt/tunnel/var/log/tunnel.log"
+exec 2>>"$LOG_FILE" # Redirect stderr to log file
+
+log_message() {
+  echo "$(date '+%Y-%m-%d %H:%M:%S') [tunnel-handler] $1" >> "$LOG_FILE"
+}
+
+# The user is identified by their SSH key fingerprint.
+TOKEN="$(/opt/tunnel/libexec/get-ssh-fingerprint)"
+if [ -z "$TOKEN" ] || [ "$TOKEN" == "anonymous" ]; then
+  log_message "ERROR: Could not determine SSH key fingerprint for user. Exiting."
+  echo "Error: Could not determine your SSH key fingerprint. Please ensure your public key is correctly configured."
+  exit 1
+fi
+log_message "SSH_ORIGINAL_COMMAND: '$SSH_ORIGINAL_COMMAND' for token: '$TOKEN'"
+
+# The command provided by the user (e.g., create, alias:my-app, activate:public_port)
+COMMAND="$SSH_ORIGINAL_COMMAND"
+
+# Default to creating a new tunnel if no command is provided.
+if [ -z "$COMMAND" ]; then
+    COMMAND="create"
+fi
+
+# Validate command format
+if [[ ! "$COMMAND" =~ ^(create|alias:[a-zA-Z0-9-]+|activate:[0-9]+)$ ]]; then
+    log_message "ERROR: Invalid command format: '$COMMAND'"
+    echo "Invalid command. Use 'create', 'alias:<your-alias>', or 'activate:<public-port>'."
+    exit 1
+fi
+
+case "$COMMAND" in
+    "create")
+        log_message "Attempting to create new tunnel for token: '$TOKEN'"
+        DATA=$(/opt/tunnel/bin/alias-manager create "$TOKEN")
+        if [ -z "$DATA" ]; then
+            log_message "ERROR: alias-manager failed to create tunnel for token: '$TOKEN'"
+            echo "Error: Failed to create tunnel. Please try again or contact support."
+            exit 1
+        fi
+        IFS=':' read -r ALIAS PORT PUBLIC_PORT <<< "$DATA"
+
+        cat <<-EOF
+
+	==== Tunnel Configuration Created ====
+
+	  Public URL:   $ALIAS.tunnel.net:$PUBLIC_PORT
+	  Local Port:   $PORT
+
+	To activate this tunnel, run the following command:
+
+	  ssh -R $PUBLIC_PORT:localhost:$PORT tunneluser@tunnel.net
+
+	This configuration will expire if not activated within 10 minutes.
+
+	EOF
+        log_message "Tunnel configuration created for token '$TOKEN': $ALIAS:$PORT:$PUBLIC_PORT"
+        ;;
+
+    alias:*) # Create a tunnel with a specific alias.
+        REQUESTED_ALIAS="${COMMAND#alias:}"
+        log_message "Attempting to create tunnel with alias '$REQUESTED_ALIAS' for token: '$TOKEN'"
+        DATA=$(/opt/tunnel/bin/alias-manager create "$TOKEN:$REQUESTED_ALIAS")
+        if [ -z "$DATA" ]; then
+            log_message "ERROR: alias-manager failed to create tunnel with alias '$REQUESTED_ALIAS' for token: '$TOKEN'"
+            echo "Error: Failed to create tunnel with alias '$REQUESTED_ALIAS'. It might be reserved or unavailable. Please try another alias or contact support."
+            exit 1
+        fi
+        IFS=':' read -r ALIAS PORT PUBLIC_PORT <<< "$DATA"
+
+        cat <<-EOF
+
+	==== Tunnel Configuration Created ====
+
+	  Public URL:   $ALIAS.tunnel.net:$PUBLIC_PORT
+	  Local Port:   $PORT
+
+	To activate this tunnel, run the following command:
+
+	  ssh -R $PUBLIC_PORT:localhost:$PORT tunneluser@tunnel.net
+
+	This configuration will expire if not activated within 10 minutes.
+
+	EOF
+        log_message "Tunnel configuration created with alias '$REQUESTED_ALIAS' for token '$TOKEN': $ALIAS:$PORT:$PUBLIC_PORT"
+        ;;
+
+    activate:*) # Activate a tunnel.
+        PUBLIC_PORT_TO_ACTIVATE="${COMMAND#activate:}"
+        log_message "Attempting to activate tunnel for token '$TOKEN' on public port '$PUBLIC_PORT_TO_ACTIVATE'"
+        /opt/tunnel/bin/alias-manager activate "$TOKEN:$PUBLIC_PORT_TO_ACTIVATE"
+        if [ $? -ne 0 ]; then
+            log_message "ERROR: alias-manager failed to activate tunnel for token '$TOKEN' on public port '$PUBLIC_PORT_TO_ACTIVATE'"
+            echo "Error: Failed to activate tunnel. Please ensure the public port is correct and the tunnel configuration is still valid."
+            exit 1
+        fi
+
+        echo "Tunnel activated. Keep this SSH session open to maintain the tunnel."
+        log_message "Tunnel activated for token '$TOKEN' on public port '$PUBLIC_PORT_TO_ACTIVATE'"
+        exec sleep infinity # Keep the SSH session alive indefinitely
+        ;;
+
+esac
+
+exit 0
