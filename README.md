@@ -5,7 +5,7 @@
 **OpenPorter is a self-hosted, secure, and extensible reverse tunnel gateway that allows you to expose local TCP services to the internet with a single SSH command. No client-client software is needed.**
 
 ---
-```see this was made by gemini cli and wanted to see how that pans out. people do let met know how do you feel about this (as a project as well as how gemini pans out). also I am new to tunneling and all and hence would appreciate your comments as well as guidance on this```
+>```see this was made by gemini cli and wanted to see how that pans out. people do let met know how do you feel about this (as a project as well as how gemini pans out). also I am new to tunneling and all and hence would appreciate your comments as well as guidance on this```
 
 ## Table of Contents
 
